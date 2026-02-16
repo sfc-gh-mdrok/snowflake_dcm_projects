@@ -4,7 +4,8 @@ define schema DCM_DEMO_2_FINANCE{{env_suffix}}.GOLD;
 -- Create aggregate market history fact table
 define dynamic table DCM_DEMO_2_FINANCE{{env_suffix}}.GOLD.FACT_MARKET_HISTORY
 target_lag='1 hour' 
-warehouse='DCM_DEMO_2_FINANCE_WH{{env_suffix}}' 
+warehouse='DCM_DEMO_2_FINANCE_WH{{env_suffix}}'
+data_metric_schedule = 'TRIGGER_ON_CHANGES'
 as
 select 
     FMHT.SK_SECURITY_ID,
@@ -59,6 +60,7 @@ inner join
 define dynamic table DCM_DEMO_2_FINANCE{{env_suffix}}.GOLD.FACT_PROSPECT 
 target_lag='6 hours' 
 warehouse='DCM_DEMO_2_FINANCE_WH{{env_suffix}}' 
+data_metric_schedule = 'TRIGGER_ON_CHANGES'
 as
 select 
     FPT.AGENCYID as AGENCY_ID,
@@ -96,7 +98,8 @@ join
 -- Fact Cash Balances
 define dynamic table DCM_DEMO_2_FINANCE{{env_suffix}}.GOLD.FACT_CASH_BALANCES 
 target_lag='3 hours'
-warehouse='DCM_DEMO_2_FINANCE_WH{{env_suffix}}' 
+warehouse='DCM_DEMO_2_FINANCE_WH{{env_suffix}}'
+data_metric_schedule = 'TRIGGER_ON_CHANGES'
 AS
 select 
     DA.SK_CUSTOMER_ID
