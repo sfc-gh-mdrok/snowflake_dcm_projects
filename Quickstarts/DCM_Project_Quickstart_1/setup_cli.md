@@ -11,16 +11,14 @@ If you are new to DCM Projects we recommend to start with the Workspace UI in Sn
 
 ### 1. Install the snowCLI with the latest DCM commands from this tag:
 
-```pipx install git+https://github.com/snowflakedb/snowflake-cli.git@dcm-pipeline-commands --force```
+```pipx install git+https://github.com/snowflakedb/snowflake-cli.git --force```
 
 
 ### 2. Confirm your connection to your Snowflake account
 
 `snow connection test`
 
-Check that you have
-* a default schema where to create your DCM Project
-* a default role with privileges to create a DCM Project
+Check that you have a default role with privileges to create a DCM Project
 
 
 
@@ -34,23 +32,23 @@ Navigate to the Quickstart_1 project files:
 Review the manifest and definition files inside that demo project
 
 ### 4. Create a new DCM Project object
-Use your current schema or add a fully qualified name
-- `snow dcm create DCM_PROJECT_DEV`
+Creates the project object with the name specified in the manifest.yml under the "DEV" target
+- `snow dcm create --target DEV`
 
 ### 5. Plan & Deploy
 Always run a DCM Plan before deploying changes to see how these definitions differ from the current state.
 If none of these object exist yet, then PLAN will simulate all of them to be created in the right order.
-- `snow dcm plan DCM_PROJECT_DEV --configuration DEV --variable “user=‘MY_USER’” --output-path plan/`
+- `snow dcm plan --variable “user=‘MY_USER_NAME’” `
 
 If the plan was successful and the plan output matches the expected changes, then you can deploy those changes to the account.
-- `snow dcm deploy DCM_PROJECT_DEV --configuration DEV --variable “user=‘MY_USER’” --alias MY_BIG_CHANGE`
+- `snow dcm deploy --variable “user=‘MY_USER_NAME’” --alias MY_BIG_CHANGE`
 
 
 ### Other available DCM commands:
 - `snow dcm list`
-- `snow dcm describe DCM_PROJECT_DEV`
-- `snow dcm list-deployments DCM_PROJECT_DEV`
-- `snow dcm refresh DCM_PROJECT_DEV`
-- `snow dcm test DCM_PROJECT_DEV`
-- `snow dcm preview DCM_PROJECT_DEV --configuration DEV --object DCM_PROJECT_DEV.SERVE.V_DASHBOARD_SALES_BY_CATEGORY_CITY`
-- `snow dcm drop DCM_PROJECT_DEV`
+- `snow dcm describe`
+- `snow dcm list-deployments`
+- `snow dcm refresh`
+- `snow dcm test`
+- `snow dcm preview --target DEV --object DCM_PROJECT_DEV.SERVE.V_DASHBOARD_SALES_BY_CATEGORY_CITY`
+- `snow dcm drop`
