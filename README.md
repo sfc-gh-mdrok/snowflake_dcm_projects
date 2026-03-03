@@ -23,13 +23,14 @@ How to use this demo content:
 3. insert URL `https://github.com/snowflake-labs/snowflake_dcm_projects`
 4. select an API Integration for github (create one if needed)
 5. select "public repository"
-6. Open the "setup.ipynb" notebook file to continue
+6. Open the Quickstarts/DCM_Project_Quickstart_1/setup.ipynb notebook file
+7. Connect the notebook to a compute pool so you can run the setup commands step by step
 
 
 ### Option B: in your local IDE ###
 (if you are already familiar with snowflake-CLI)
 
-1. install snowflake-cli
-2. connect to your Snowflake account
+1. install snowflake-cli with `pipx install git+https://github.com/snowflakedb/snowflake-cli.git --force`
+2. connect to your Snowflake account and check with `snow connection test`
 3. clone this dcm-quickstart repository `git clone https://github.com/snowflake-labs/snowflake_dcm_projects`
-4. Open the "setup.ipynb" notebook file to continue
+4. Open the Quickstarts/DCM_Project_Quickstart_1/setup_cli.md file to continue or run `snow dcm --help`
