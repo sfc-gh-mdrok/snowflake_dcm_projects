@@ -74,7 +74,8 @@ define table DCM_DEMO_1{{env_suffix}}.RAW.ORDER_DETAIL (
     MENU_ITEM_ID NUMBER,
     QUANTITY NUMBER,
     MD_COL VARCHAR, -- Added to test DCM alters
-    MD_COL2 DATE -- Added to test DCM alters
+    MD_COL2 DATE, -- Added to test DCM alters
+    MD_COL3 INTEGER -- Added to test DCM alters
 )
 change_tracking = TRUE;
 
