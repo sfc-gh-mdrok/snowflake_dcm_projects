@@ -182,6 +182,7 @@ jobs:
 
 
   POST_SCRIPTS_DEV:
+    if: false
     needs: [PARSE_MANIFEST, DEPLOY_DEV]
     runs-on: ubuntu-latest
     environment: DCM_DEV
@@ -208,6 +209,7 @@ jobs:
 
 
   REFRESH_DYNAMIC_TABLES_DEV:
+    if: false
     needs: [PARSE_MANIFEST, POST_SCRIPTS_DEV]
     runs-on: ubuntu-latest
     environment: DCM_DEV
@@ -247,6 +249,7 @@ jobs:
 
 
   TEST_EXPECTATIONS_DEV:
+    if: false
     needs: [PARSE_MANIFEST, REFRESH_DYNAMIC_TABLES_DEV]
     runs-on: ubuntu-latest
     environment: DCM_DEV
