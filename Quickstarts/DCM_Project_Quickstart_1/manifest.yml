@@ -10,7 +10,7 @@ targets:
   DCM_DEV:
     account_identifier: SFPSCOGS-MDROK_AWS_CAS2        # update to your account names
     project_name: DEMO_DB.DCM_PROJECTS.DCM_PROJECT_DEV
-    project_owner: DCM_DEVELOPER
+    project_owner: SYSADMIN
     templating_config: DEV
     
   DCM_STAGE:
