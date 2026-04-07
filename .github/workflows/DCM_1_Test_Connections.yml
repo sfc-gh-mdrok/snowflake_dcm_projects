@@ -79,6 +79,8 @@ jobs:
         TARGET_NAME: ${{ matrix.target }}
       run: |
         if ! snow connection test -x --format json > connection_output.json 2>&1; then
+          echo "❌ Connection to $TARGET_NAME failed — error output:"
+          cat connection_output.json 2>/dev/null || echo "No output captured"
           {
             echo "### ❌ Connection to $TARGET_NAME failed!"
             echo "\`\`\`"
