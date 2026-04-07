@@ -145,7 +145,7 @@ jobs:
           fi
         else
           {
-            echo 🟡 **Project \`$DCM_PROJECT_NAME\` does not yet exist**"
+            echo "🟡 **Project \`$DCM_PROJECT_NAME\` does not yet exist**"
             echo "It will be created on first deployment with \`snow dcm create\`."
           } >> $GITHUB_STEP_SUMMARY
         fi
