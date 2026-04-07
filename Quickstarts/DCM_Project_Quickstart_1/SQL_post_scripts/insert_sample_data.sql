@@ -74,7 +74,7 @@ values
     (1022, 20, 109, '2023-10-30 11:00:00'), (1023, 1, 110, '2023-10-30 11:30:00'),
     (1024, 2, 103, '2023-10-30 12:15:00'), (1025, 3, 104, '2023-10-30 13:00:00');
 
-insert into DCM_DEMO_1{{env_suffix}}.RAW.ORDER_DETAIL 
+insert into DCM_DEMO_1{{env_suffix}}.RAW.ORDER_DETAIL (ORDER_ID, MENU_ITEM_ID, QUANTITY)
 values
     (1006, 7, 3), (1006, 15, 2), -- 3 Tacos, 2 Matcha
     (1007, 8, 1), (1007, 16, 1), -- Pizza & Wings
