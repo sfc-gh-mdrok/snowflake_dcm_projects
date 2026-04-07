@@ -1,0 +1,351 @@
+name: ❄️ DCM) Deploy to DEV on feature branch commit
+
+on:
+  push:
+    branches-ignore:
+      - "main"
+    paths:
+      - 'Quickstarts/**'
+
+  workflow_dispatch:
+
+env:
+  DCM_PROJECT_PATH: ${{ vars.DCM_PROJECT_PATH }}
+  SNOWFLAKE_PASSWORD: ${{ secrets.DEPLOYER_PAT }}
+  SNOWFLAKE_USER: ${{ vars.SNOWFLAKE_USER }}
+
+jobs:
+  PARSE_MANIFEST:
+    runs-on: ubuntu-latest
+    outputs:
+      dev_account: ${{ steps.get_targets.outputs.dev_account }}
+      dev_role: ${{ steps.get_targets.outputs.dev_role }}
+      dev_project_name: ${{ steps.get_targets.outputs.dev_project_name }}
+    steps:
+    - name: Clone Repo
+      uses: actions/checkout@v4
+
+    - name: Get DCM_DEV target from manifest
+      id: get_targets
+      run: |
+        MANIFEST_PATH="${{ env.DCM_PROJECT_PATH }}manifest.yml"
+
+        echo "📂 Project path: \`$MANIFEST_PATH\`" >> $GITHUB_STEP_SUMMARY
+        echo "🌿 Branch: \`${{ github.ref_name }}\`" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+
+        echo "dev_account=$(yq eval '.targets.DCM_DEV.account_identifier' "$MANIFEST_PATH" | sed 's/"//g' | sed "s/'//g")" >> $GITHUB_OUTPUT
+        echo "dev_role=$(yq eval '.targets.DCM_DEV.project_owner' "$MANIFEST_PATH" | sed 's/"//g' | sed "s/'//g")" >> $GITHUB_OUTPUT
+        echo "dev_project_name=$(yq eval '.targets.DCM_DEV.project_name' "$MANIFEST_PATH" | sed 's/"//g' | sed "s/'//g")" >> $GITHUB_OUTPUT
+
+        echo "**DCM_DEV:**" >> $GITHUB_STEP_SUMMARY
+        echo "- Snowflake account: \`$(yq eval '.targets.DCM_DEV.account_identifier' "$MANIFEST_PATH" | sed 's/"//g' | sed "s/'//g")\`" >> $GITHUB_STEP_SUMMARY
+        echo "- Project object: \`$(yq eval '.targets.DCM_DEV.project_name' "$MANIFEST_PATH" | sed 's/"//g' | sed "s/'//g")\`" >> $GITHUB_STEP_SUMMARY
+        echo "- Project owner: \`$(yq eval '.targets.DCM_DEV.project_owner' "$MANIFEST_PATH" | sed 's/"//g' | sed "s/'//g")\`" >> $GITHUB_STEP_SUMMARY
+        echo "- Templating Config: \`$(yq eval '.targets.DCM_DEV.templating_config' "$MANIFEST_PATH" | sed 's/"//g' | sed "s/'//g")\`" >> $GITHUB_STEP_SUMMARY
+
+
+  PLAN_DEV:
+    needs: PARSE_MANIFEST
+    runs-on: ubuntu-latest
+    environment: DCM_DEV
+    env:
+      SNOWFLAKE_ACCOUNT: ${{ needs.PARSE_MANIFEST.outputs.dev_account }}
+      SNOWFLAKE_ROLE: ${{ needs.PARSE_MANIFEST.outputs.dev_role }}
+    steps:
+    - name: Clone Repo
+      uses: actions/checkout@v4
+    - name: Setup SnowCLI
+      run: pip install git+https://github.com/snowflakedb/snowflake-cli.git
+
+    - name: Execute PLAN against DEV and summarize output
+      id: dev_plan
+      run: |
+        cd ./$DCM_PROJECT_PATH
+        snow dcm create --target DCM_DEV --if-not-exists -x
+
+        if snow dcm plan --target DCM_DEV --save-output -x; then
+          echo "### ✅ DCM Plan to DEV successful" >> $GITHUB_STEP_SUMMARY
+
+          PLAN_METADATA_FILE="out/plan/plan_result.json"
+          for OP_TYPE in CREATE ALTER DROP; do
+            case $OP_TYPE in CREATE) OP_ICON="🟢";; ALTER) OP_ICON="🟡";; DROP) OP_ICON="🔴";; esac
+            OP_COUNT=$(jq --arg OP_TYPE "$OP_TYPE" '.changeset[] | select(.type == $OP_TYPE)' "$PLAN_METADATA_FILE" | jq -s 'length')
+            echo "**${OP_ICON} ${OP_TYPE} operations: $OP_COUNT**" >> $GITHUB_STEP_SUMMARY
+            if [ "$OP_COUNT" -gt 0 ]; then
+              OBJECT_DOMAINS=$(jq -r --arg OP_TYPE "$OP_TYPE" '[.changeset[] | select(.type == $OP_TYPE) | .object_id.domain] | unique | .[]' "$PLAN_METADATA_FILE")
+              echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+              for DOMAIN in $OBJECT_DOMAINS; do
+                DOMAIN_COUNT=$(jq --arg OP_TYPE "$OP_TYPE" --arg DOMAIN "$DOMAIN" '.changeset[] | select(.type == $OP_TYPE and .object_id.domain == $DOMAIN)' "$PLAN_METADATA_FILE" | jq -s 'length')
+                echo "- $DOMAIN: $DOMAIN_COUNT" >> $GITHUB_STEP_SUMMARY
+              done
+              echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+            fi
+          done
+
+        else
+          {
+            echo "### ❌ DCM Plan to DEV failed"
+            echo "\`\`\`"
+            jq -r '.errors[].message' out/plan/plan_result.json
+            echo "\`\`\`"
+          } >> $GITHUB_STEP_SUMMARY
+          exit 1
+        fi
+
+    - name: Upload DEV PLAN output
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: dev-plan-output
+        path: ${{ env.DCM_PROJECT_PATH }}out/plan/plan_result.json
+
+
+  DATA_DROP_DETECTION_DEV:
+    needs: PLAN_DEV
+    runs-on: ubuntu-latest
+    environment: DCM_DEV
+    steps:
+    - name: Download plan artifact
+      uses: actions/download-artifact@v4
+      with:
+        name: dev-plan-output
+        path: ${{ env.DCM_PROJECT_PATH }}out/plan/
+
+    - name: Verify plan file exists
+      run: |
+        PLAN_FILE="${{ env.DCM_PROJECT_PATH }}out/plan/plan_result.json"
+        if [ ! -f "$PLAN_FILE" ]; then
+          echo "### ⚠️ Plan output file not found!" >> $GITHUB_STEP_SUMMARY
+          exit 1
+        fi
+
+    - name: Check for Destructive Commands
+      run: |
+        DEV_PLAN_OUTPUT=${{ env.DCM_PROJECT_PATH }}out/plan/plan_result.json
+        DESTRUCTIVE_COMMANDS=$(jq -c '[.changeset[] | select(.type == "DROP" and (.object_id.domain | IN("DATABASE", "SCHEMA", "TABLE", "STAGE")))]' "$DEV_PLAN_OUTPUT")
+        TOTAL_DROPS=$(echo "$DESTRUCTIVE_COMMANDS" | jq 'length')
+        if [[ $TOTAL_DROPS -gt 0 ]]; then
+          DATABASE_DROPS=$(echo "$DESTRUCTIVE_COMMANDS" | jq '[.[] | select(.object_id.domain == "DATABASE")] | length')
+          SCHEMA_DROPS=$(echo "$DESTRUCTIVE_COMMANDS" | jq '[.[] | select(.object_id.domain == "SCHEMA")] | length')
+          TABLE_DROPS=$(echo "$DESTRUCTIVE_COMMANDS" | jq '[.[] | select(.object_id.domain == "TABLE")] | length')
+          STAGE_DROPS=$(echo "$DESTRUCTIVE_COMMANDS" | jq '[.[] | select(.object_id.domain == "STAGE")] | length')
+
+          {
+            echo "### ⚠️ PLAN contains DROP commands"
+            echo "The plan contains **${TOTAL_DROPS}** DROP operation(s) for:"
+            echo "\`\`\`"
+            if [[ $DATABASE_DROPS -gt 0 ]]; then echo "- Databases: ${DATABASE_DROPS}"; fi
+            if [[ $SCHEMA_DROPS -gt 0 ]]; then echo "- Schemas: ${SCHEMA_DROPS}"; fi
+            if [[ $TABLE_DROPS -gt 0 ]]; then echo "- Tables: ${TABLE_DROPS}"; fi
+            if [[ $STAGE_DROPS -gt 0 ]]; then echo "- Stages: ${STAGE_DROPS}"; fi
+            echo "\`\`\`"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          exit 1
+        else
+          echo "### ✅ PLAN contains no DROP DATABASE | SCHEMA | TABLE | STAGE commands" >> $GITHUB_STEP_SUMMARY
+        fi
+
+
+  DEPLOY_DEV:
+    needs: [PARSE_MANIFEST, PLAN_DEV, DATA_DROP_DETECTION_DEV]
+    runs-on: ubuntu-latest
+    environment: DCM_DEV
+    env:
+      SNOWFLAKE_ACCOUNT: ${{ needs.PARSE_MANIFEST.outputs.dev_account }}
+      SNOWFLAKE_ROLE: ${{ needs.PARSE_MANIFEST.outputs.dev_role }}
+    steps:
+    - name: Clone Repo
+      uses: actions/checkout@v4
+    - name: Setup SnowCLI
+      run: pip install git+https://github.com/snowflakedb/snowflake-cli.git
+
+    - name: Execute DEPLOY to DEV
+      run: |
+        cd ./$DCM_PROJECT_PATH
+
+        deploy_output=$(snow dcm deploy --target DCM_DEV -x 2>&1)
+        EXIT_CODE=$?
+
+        if [ $EXIT_CODE -eq 0 ]; then
+          echo "### ✅ DCM Deploy to DEV successful" >> $GITHUB_STEP_SUMMARY
+        else
+          {
+            echo "### ❌ DCM Deploy to DEV failed"
+            echo "\`\`\`"
+            echo "$deploy_output"
+            echo "\`\`\`"
+          } >> $GITHUB_STEP_SUMMARY
+          exit $EXIT_CODE
+        fi
+
+
+  POST_SCRIPTS_DEV:
+    needs: [PARSE_MANIFEST, DEPLOY_DEV]
+    runs-on: ubuntu-latest
+    environment: DCM_DEV
+    env:
+      SNOWFLAKE_ACCOUNT: ${{ needs.PARSE_MANIFEST.outputs.dev_account }}
+      SNOWFLAKE_ROLE: ${{ needs.PARSE_MANIFEST.outputs.dev_role }}
+    steps:
+    - name: Clone Repo
+      uses: actions/checkout@v4
+    - name: Setup SnowCLI
+      run: pip install git+https://github.com/snowflakedb/snowflake-cli.git
+
+    - name: Execute any post scripts
+      run: |
+        cd ./$DCM_PROJECT_PATH
+        if [ -f SQL_post_scripts/insert_sample_data.sql ]; then
+          SQL_OUTPUT=$(snow sql -f SQL_post_scripts/insert_sample_data.sql --variable "env_suffix=_DEV" --enable-templating JINJA -x)
+          echo "### ✨ Cortex AI Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          snow cortex complete "Summarize the following SQL script execution. For each SQL statement indicate the status by adding either the ✅ or ❌ symbol in front of it. For INSERT statements, also report the number of rows inserted: ${SQL_OUTPUT}" -x >> $GITHUB_STEP_SUMMARY
+        else
+          echo "🚫 No post-hook files found." >> $GITHUB_STEP_SUMMARY
+        fi
+
+
+  REFRESH_DYNAMIC_TABLES_DEV:
+    needs: [PARSE_MANIFEST, POST_SCRIPTS_DEV]
+    runs-on: ubuntu-latest
+    environment: DCM_DEV
+    env:
+      SNOWFLAKE_ACCOUNT: ${{ needs.PARSE_MANIFEST.outputs.dev_account }}
+      SNOWFLAKE_ROLE: ${{ needs.PARSE_MANIFEST.outputs.dev_role }}
+    steps:
+    - name: Clone Repo
+      uses: actions/checkout@v4
+    - name: Setup SnowCLI
+      run: pip install git+https://github.com/snowflakedb/snowflake-cli.git
+
+    - name: Refresh all Dynamic Tables
+      run: |
+        cd ./$DCM_PROJECT_PATH
+        set +e
+        REFRESH_OUTPUT=$(snow dcm refresh --target DCM_DEV -x 2>&1)
+        EXIT_CODE=$?
+        set -e
+
+        if [ $EXIT_CODE -eq 0 ]; then
+          {
+            echo "### ✅ Dynamic Tables Refresh Successful"
+            echo "\`\`\`"
+            snow cortex complete "How many dynamic tables were refreshed in total? Use return-format: X of Y Dynamic Tables refreshed with new data. Here is the original output message: ${REFRESH_OUTPUT}" -x
+            echo "\`\`\`"
+          } >> $GITHUB_STEP_SUMMARY
+        else
+          {
+            echo "### ❌ Dynamic Tables Refresh Failed"
+            echo "\`\`\`"
+            echo "$REFRESH_OUTPUT"
+            echo "\`\`\`"
+          } >> $GITHUB_STEP_SUMMARY
+          exit $EXIT_CODE
+        fi
+
+
+  TEST_EXPECTATIONS_DEV:
+    needs: [PARSE_MANIFEST, REFRESH_DYNAMIC_TABLES_DEV]
+    runs-on: ubuntu-latest
+    environment: DCM_DEV
+    env:
+      SNOWFLAKE_ACCOUNT: ${{ needs.PARSE_MANIFEST.outputs.dev_account }}
+      SNOWFLAKE_ROLE: ${{ needs.PARSE_MANIFEST.outputs.dev_role }}
+    steps:
+    - name: Clone Repo
+      uses: actions/checkout@v4
+    - name: Setup SnowCLI
+      run: pip install git+https://github.com/snowflakedb/snowflake-cli.git
+
+    - name: Test Data Quality Expectations
+      run: |
+        cd ./$DCM_PROJECT_PATH
+        set +e
+        TEST_OUTPUT=$(snow dcm test --target DCM_DEV -x 2>&1)
+        EXIT_CODE=$?
+        set -e
+
+        if [ $EXIT_CODE -eq 0 ]; then
+          {
+            echo "### ✅ Data Quality Test Passed"
+            echo "\`\`\`"
+            echo "All expectations met."
+            echo "\`\`\`"
+          } >> $GITHUB_STEP_SUMMARY
+        else
+          {
+            echo "### ❌ Data Quality Test Failed"
+            echo "\`\`\`"
+            snow cortex complete "How many data expectations were violated and for which tables? In case of a SQL error - return the core error message without changes. Here is the query output: ${TEST_OUTPUT}" -x
+            echo "\`\`\`"
+          } >> $GITHUB_STEP_SUMMARY
+          exit $EXIT_CODE
+        fi
+
+
+  WORKFLOW_SUMMARY:
+    needs: [PLAN_DEV, DATA_DROP_DETECTION_DEV, DEPLOY_DEV, POST_SCRIPTS_DEV, REFRESH_DYNAMIC_TABLES_DEV, TEST_EXPECTATIONS_DEV]
+    if: always()
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+      pull-requests: write
+    steps:
+      - name: Post Status to PR
+        uses: actions/github-script@v7
+        env:
+          PLAN_DEV_RESULT: ${{ needs.PLAN_DEV.result }}
+          DATA_DROP_DETECTION_DEV_RESULT: ${{ needs.DATA_DROP_DETECTION_DEV.result }}
+          DEPLOY_DEV_RESULT: ${{ needs.DEPLOY_DEV.result }}
+          POST_SCRIPTS_DEV_RESULT: ${{ needs.POST_SCRIPTS_DEV.result }}
+          REFRESH_DYNAMIC_TABLES_DEV_RESULT: ${{ needs.REFRESH_DYNAMIC_TABLES_DEV.result }}
+          TEST_EXPECTATIONS_DEV_RESULT: ${{ needs.TEST_EXPECTATIONS_DEV.result }}
+        with:
+          script: |
+            const { data: prs } = await github.rest.repos.listPullRequestsAssociatedWithCommit({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              commit_sha: context.sha,
+            });
+
+            if (prs.length === 0) {
+              console.log("No PR found for this commit. Skipping comment.");
+              return;
+            }
+            const prNumber = prs[0].number;
+
+            const getEmoji = (result) => {
+              const r = result.toLowerCase();
+              if (r === 'success') return '✅';
+              if (r === 'failure') return '❌';
+              if (r === 'skipped') return '⏭️';
+              return '⚠️';
+            };
+
+            const jobs = {
+              'DEV - Plan': process.env.PLAN_DEV_RESULT,
+              'DEV - Data Drop Protection': process.env.DATA_DROP_DETECTION_DEV_RESULT,
+              'DEV - Deploy': process.env.DEPLOY_DEV_RESULT,
+              'DEV - Post Scripts': process.env.POST_SCRIPTS_DEV_RESULT,
+              'DEV - Refresh Dynamic Tables': process.env.REFRESH_DYNAMIC_TABLES_DEV_RESULT,
+              'DEV - Test Expectations': process.env.TEST_EXPECTATIONS_DEV_RESULT
+            };
+
+            const runUrl = `https://github.com/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
+            let summary = `### ❄️ DCM - DEV Deployment Summary\n\n`;
+            summary += `| Job | Result |\n|-----|--------|\n`;
+
+            for (const [job, result] of Object.entries(jobs)) {
+              summary += `| ${job} | ${getEmoji(result)} ${result} |\n`;
+            }
+
+            summary += `\n[View full run](${runUrl})`;
+
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: prNumber,
+              body: summary
+            });
