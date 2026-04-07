@@ -26,21 +26,21 @@ jobs:
         
         echo "📂 Project path: \`$MANIFEST_PATH\`" >> $GITHUB_STEP_SUMMARY
 
-        echo "stage_account=$(yq eval '.targets.DCM_STAGE.account_identifier' "$MANIFEST_PATH" | sed 's/"//g' | sed "s/'//g")" >> $GITHUB_OUTPUT
-        echo "stage_role=$(yq eval '.targets.DCM_STAGE.project_owner' "$MANIFEST_PATH" | sed 's/"//g' | sed "s/'//g")" >> $GITHUB_OUTPUT
-        echo "stage_project_name=$(yq eval '.targets.DCM_STAGE.project_name' "$MANIFEST_PATH" | sed 's/"//g' | sed "s/'//g")" >> $GITHUB_OUTPUT
+        echo "stage_account=$(yq eval '.targets.DCM_DEV.account_identifier' "$MANIFEST_PATH" | sed 's/"//g' | sed "s/'//g")" >> $GITHUB_OUTPUT
+        echo "stage_role=$(yq eval '.targets.DCM_DEV.project_owner' "$MANIFEST_PATH" | sed 's/"//g' | sed "s/'//g")" >> $GITHUB_OUTPUT
+        echo "stage_project_name=$(yq eval '.targets.DCM_DEV.project_name' "$MANIFEST_PATH" | sed 's/"//g' | sed "s/'//g")" >> $GITHUB_OUTPUT
 
         echo "" >> $GITHUB_STEP_SUMMARY
-        echo "**DCM_STAGE:**" >> $GITHUB_STEP_SUMMARY
-        echo "- Snowflake account: \`$(yq eval '.targets.DCM_STAGE.account_identifier' "$MANIFEST_PATH" | sed 's/"//g' | sed "s/'//g")\`" >> $GITHUB_STEP_SUMMARY
-        echo "- Project object: \`$(yq eval '.targets.DCM_STAGE.project_name' "$MANIFEST_PATH" | sed 's/"//g' | sed "s/'//g")\`" >> $GITHUB_STEP_SUMMARY
-        echo "- Project owner: \`$(yq eval '.targets.DCM_STAGE.project_owner' "$MANIFEST_PATH" | sed 's/"//g' | sed "s/'//g")\`" >> $GITHUB_STEP_SUMMARY
-        echo "- Templating Config: \`$(yq eval '.targets.DCM_STAGE.templating_config' "$MANIFEST_PATH" | sed 's/"//g' | sed "s/'//g")\`" >> $GITHUB_STEP_SUMMARY
+        echo "**DCM_DEV:**" >> $GITHUB_STEP_SUMMARY
+        echo "- Snowflake account: \`$(yq eval '.targets.DCM_DEV.account_identifier' "$MANIFEST_PATH" | sed 's/"//g' | sed "s/'//g")\`" >> $GITHUB_STEP_SUMMARY
+        echo "- Project object: \`$(yq eval '.targets.DCM_DEV.project_name' "$MANIFEST_PATH" | sed 's/"//g' | sed "s/'//g")\`" >> $GITHUB_STEP_SUMMARY
+        echo "- Project owner: \`$(yq eval '.targets.DCM_DEV.project_owner' "$MANIFEST_PATH" | sed 's/"//g' | sed "s/'//g")\`" >> $GITHUB_STEP_SUMMARY
+        echo "- Templating Config: \`$(yq eval '.targets.DCM_DEV.templating_config' "$MANIFEST_PATH" | sed 's/"//g' | sed "s/'//g")\`" >> $GITHUB_STEP_SUMMARY
 
   TEST_EXPECTATIONS_STAGE:
     needs: PARSE_MANIFEST
     runs-on: ubuntu-latest
-    environment: DCM_STAGE
+    environment: DCM_DEV
     env:
       SNOWFLAKE_ACCOUNT: ${{ needs.PARSE_MANIFEST.outputs.stage_account }}
       SNOWFLAKE_ROLE: ${{ needs.PARSE_MANIFEST.outputs.stage_role }}
@@ -55,7 +55,7 @@ jobs:
       run: |
         cd ./$DCM_PROJECT_PATH
         set +e
-        REFRESH_OUTPUT=$(snow dcm refresh --target DCM_STAGE -x 2>&1)
+        REFRESH_OUTPUT=$(snow dcm refresh --target DCM_DEV -x 2>&1)
         EXIT_CODE=$?
         set -e
 
@@ -85,7 +85,7 @@ jobs:
       run: |        
         cd ./$DCM_PROJECT_PATH
         set +e
-        TEST_OUTPUT=$(snow dcm test --target DCM_STAGE -x 2>&1)
+        TEST_OUTPUT=$(snow dcm test --target DCM_DEV -x 2>&1)
         EXIT_CODE=$?
         set -e
 

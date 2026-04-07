@@ -34,14 +34,14 @@ jobs:
         
         echo "📂 Project path: \`$MANIFEST_PATH\`" >> $GITHUB_STEP_SUMMARY
 
-        echo "stage_account=$(yq eval '.targets.DCM_STAGE.account_identifier' "$MANIFEST_PATH" | sed 's/"//g' | sed "s/'//g")" >> $GITHUB_OUTPUT
-        echo "stage_role=$(yq eval '.targets.DCM_STAGE.project_owner' "$MANIFEST_PATH" | sed 's/"//g' | sed "s/'//g")" >> $GITHUB_OUTPUT
-        echo "stage_project_name=$(yq eval '.targets.DCM_STAGE.project_name' "$MANIFEST_PATH" | sed 's/"//g' | sed "s/'//g")" >> $GITHUB_OUTPUT
-        echo "prod_account=$(yq eval '.targets.DCM_PROD_US.account_identifier' "$MANIFEST_PATH" | sed 's/"//g' | sed "s/'//g")" >> $GITHUB_OUTPUT
-        echo "prod_role=$(yq eval '.targets.DCM_PROD_US.project_owner' "$MANIFEST_PATH" | sed 's/"//g' | sed "s/'//g")" >> $GITHUB_OUTPUT
-        echo "prod_project_name=$(yq eval '.targets.DCM_PROD_US.project_name' "$MANIFEST_PATH" | sed 's/"//g' | sed "s/'//g")" >> $GITHUB_OUTPUT
+        echo "stage_account=$(yq eval '.targets.DCM_DEV.account_identifier' "$MANIFEST_PATH" | sed 's/"//g' | sed "s/'//g")" >> $GITHUB_OUTPUT
+        echo "stage_role=$(yq eval '.targets.DCM_DEV.project_owner' "$MANIFEST_PATH" | sed 's/"//g' | sed "s/'//g")" >> $GITHUB_OUTPUT
+        echo "stage_project_name=$(yq eval '.targets.DCM_DEV.project_name' "$MANIFEST_PATH" | sed 's/"//g' | sed "s/'//g")" >> $GITHUB_OUTPUT
+        echo "prod_account=$(yq eval '.targets.DCM_STAGE.account_identifier' "$MANIFEST_PATH" | sed 's/"//g' | sed "s/'//g")" >> $GITHUB_OUTPUT
+        echo "prod_role=$(yq eval '.targets.DCM_STAGE.project_owner' "$MANIFEST_PATH" | sed 's/"//g' | sed "s/'//g")" >> $GITHUB_OUTPUT
+        echo "prod_project_name=$(yq eval '.targets.DCM_STAGE.project_name' "$MANIFEST_PATH" | sed 's/"//g' | sed "s/'//g")" >> $GITHUB_OUTPUT
 
-        for TARGET in DCM_STAGE DCM_PROD_US; do
+        for TARGET in DCM_DEV DCM_STAGE; do
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "**${TARGET}:**" >> $GITHUB_STEP_SUMMARY
           echo "- Snowflake account: \`$(yq eval ".targets.$TARGET.account_identifier" "$MANIFEST_PATH" | sed 's/"//g' | sed "s/'//g")\`" >> $GITHUB_STEP_SUMMARY
@@ -53,7 +53,7 @@ jobs:
   PLAN_STAGE:
     needs: PARSE_MANIFEST
     runs-on: ubuntu-latest
-    environment: DCM_STAGE
+    environment: DCM_DEV
     env:
       SNOWFLAKE_ACCOUNT: ${{ needs.PARSE_MANIFEST.outputs.stage_account }}
       SNOWFLAKE_ROLE: ${{ needs.PARSE_MANIFEST.outputs.stage_role }}
@@ -67,9 +67,9 @@ jobs:
       id: stage_plan
       run: |        
         cd ./$DCM_PROJECT_PATH
-        snow dcm create --target DCM_STAGE --if-not-exists -x
+        snow dcm create --target DCM_DEV --if-not-exists -x
         
-        if snow dcm plan --target DCM_STAGE --save-output -x; then        
+        if snow dcm plan --target DCM_DEV --save-output -x; then        
           echo "### ✅ DCM Plan to STAGE successful" >> $GITHUB_STEP_SUMMARY
           
           PLAN_METADATA_FILE="out/plan/plan_result.json"
@@ -108,7 +108,7 @@ jobs:
   DATA_DROP_DETECTION_STAGE:
     needs: PLAN_STAGE
     runs-on: ubuntu-latest
-    environment: DCM_STAGE
+    environment: DCM_DEV
     steps:
     - name: Download plan artifact
       uses: actions/download-artifact@v4
@@ -155,7 +155,7 @@ jobs:
   DEPLOY_STAGE:
     needs: [PARSE_MANIFEST, PLAN_STAGE, DATA_DROP_DETECTION_STAGE]
     runs-on: ubuntu-latest
-    environment: DCM_STAGE
+    environment: DCM_DEV
     env:
       SNOWFLAKE_ACCOUNT: ${{ needs.PARSE_MANIFEST.outputs.stage_account }}
       SNOWFLAKE_ROLE: ${{ needs.PARSE_MANIFEST.outputs.stage_role }}
@@ -169,7 +169,7 @@ jobs:
       run: |        
         cd ./$DCM_PROJECT_PATH
         
-        deploy_output=$(snow dcm deploy --target DCM_STAGE -x 2>&1)
+        deploy_output=$(snow dcm deploy --target DCM_DEV -x 2>&1)
         EXIT_CODE=$?
         
         if [ $EXIT_CODE -eq 0 ]; then
@@ -188,7 +188,7 @@ jobs:
   POST_SCRIPTS_STAGE:
     needs: [PARSE_MANIFEST, DEPLOY_STAGE]
     runs-on: ubuntu-latest
-    environment: DCM_STAGE
+    environment: DCM_DEV
     env:
       SNOWFLAKE_ACCOUNT: ${{ needs.PARSE_MANIFEST.outputs.stage_account }}
       SNOWFLAKE_ROLE: ${{ needs.PARSE_MANIFEST.outputs.stage_role }}
@@ -214,7 +214,7 @@ jobs:
   REFRESH_DYNAMIC_TABLES_STAGE:
     needs: [PARSE_MANIFEST, POST_SCRIPTS_STAGE]
     runs-on: ubuntu-latest
-    environment: DCM_STAGE
+    environment: DCM_DEV
     env:
       SNOWFLAKE_ACCOUNT: ${{ needs.PARSE_MANIFEST.outputs.stage_account }}
       SNOWFLAKE_ROLE: ${{ needs.PARSE_MANIFEST.outputs.stage_role }}
@@ -228,7 +228,7 @@ jobs:
       run: |
         cd ./$DCM_PROJECT_PATH
         set +e
-        REFRESH_OUTPUT=$(snow dcm refresh --target DCM_STAGE -x 2>&1)
+        REFRESH_OUTPUT=$(snow dcm refresh --target DCM_DEV -x 2>&1)
         EXIT_CODE=$?
         set -e
 
@@ -255,7 +255,7 @@ jobs:
   TEST_EXPECTATIONS_STAGE:
     needs: [PARSE_MANIFEST, REFRESH_DYNAMIC_TABLES_STAGE]
     runs-on: ubuntu-latest
-    environment: DCM_STAGE
+    environment: DCM_DEV
     env:
       SNOWFLAKE_ACCOUNT: ${{ needs.PARSE_MANIFEST.outputs.stage_account }}
       SNOWFLAKE_ROLE: ${{ needs.PARSE_MANIFEST.outputs.stage_role }}
@@ -270,7 +270,7 @@ jobs:
       run: |        
         cd ./$DCM_PROJECT_PATH
         set +e
-        TEST_OUTPUT=$(snow dcm test --target DCM_STAGE -x 2>&1)
+        TEST_OUTPUT=$(snow dcm test --target DCM_DEV -x 2>&1)
         EXIT_CODE=$?
         set -e
 
@@ -299,7 +299,7 @@ jobs:
   PLAN_PROD:
     needs: [PARSE_MANIFEST, TEST_EXPECTATIONS_STAGE]
     runs-on: ubuntu-latest
-    environment: DCM_PROD_US
+    environment: DCM_STAGE
     env:
       SNOWFLAKE_ACCOUNT: ${{ needs.PARSE_MANIFEST.outputs.prod_account }}
       SNOWFLAKE_ROLE: ${{ needs.PARSE_MANIFEST.outputs.prod_role }}
@@ -313,9 +313,9 @@ jobs:
       id: prod_plan
       run: |        
         cd ./$DCM_PROJECT_PATH
-        snow dcm create --target DCM_PROD_US --if-not-exists -x
+        snow dcm create --target DCM_STAGE --if-not-exists -x
         
-        if snow dcm plan --target DCM_PROD_US --save-output -x; then        
+        if snow dcm plan --target DCM_STAGE --save-output -x; then        
           echo "### ✅ DCM Plan to PROD successful" >> $GITHUB_STEP_SUMMARY
           
           PLAN_METADATA_FILE="out/plan/plan_result.json"
@@ -355,7 +355,7 @@ jobs:
   DATA_DROP_DETECTION_PROD:
     needs: PLAN_PROD
     runs-on: ubuntu-latest
-    environment: DCM_PROD_US
+    environment: DCM_STAGE
     steps:
     - name: Download plan artifact
       uses: actions/download-artifact@v4
@@ -402,7 +402,7 @@ jobs:
   DEPLOY_PROD:
     needs: [PARSE_MANIFEST, PLAN_PROD, DATA_DROP_DETECTION_PROD]
     runs-on: ubuntu-latest
-    environment: DCM_PROD_US
+    environment: DCM_STAGE
     env:
       SNOWFLAKE_ACCOUNT: ${{ needs.PARSE_MANIFEST.outputs.prod_account }}
       SNOWFLAKE_ROLE: ${{ needs.PARSE_MANIFEST.outputs.prod_role }}
@@ -416,7 +416,7 @@ jobs:
       run: |        
         cd ./$DCM_PROJECT_PATH
         
-        deploy_output=$(snow dcm deploy --target DCM_PROD_US -x 2>&1)
+        deploy_output=$(snow dcm deploy --target DCM_STAGE -x 2>&1)
         EXIT_CODE=$?
         
         if [ $EXIT_CODE -eq 0 ]; then
@@ -435,7 +435,7 @@ jobs:
   POST_SCRIPTS_PROD:
     needs: [PARSE_MANIFEST, DEPLOY_PROD]
     runs-on: ubuntu-latest
-    environment: DCM_PROD_US
+    environment: DCM_STAGE
     env:
       SNOWFLAKE_ACCOUNT: ${{ needs.PARSE_MANIFEST.outputs.prod_account }}
       SNOWFLAKE_ROLE: ${{ needs.PARSE_MANIFEST.outputs.prod_role }}
@@ -461,7 +461,7 @@ jobs:
   REFRESH_DYNAMIC_TABLES_PROD:
     needs: [PARSE_MANIFEST, POST_SCRIPTS_PROD]
     runs-on: ubuntu-latest
-    environment: DCM_PROD_US
+    environment: DCM_STAGE
     env:
       SNOWFLAKE_ACCOUNT: ${{ needs.PARSE_MANIFEST.outputs.prod_account }}
       SNOWFLAKE_ROLE: ${{ needs.PARSE_MANIFEST.outputs.prod_role }}
@@ -475,7 +475,7 @@ jobs:
       run: |
         cd ./$DCM_PROJECT_PATH
         set +e
-        REFRESH_OUTPUT=$(snow dcm refresh --target DCM_PROD_US -x 2>&1)
+        REFRESH_OUTPUT=$(snow dcm refresh --target DCM_STAGE -x 2>&1)
         EXIT_CODE=$?
         set -e
 
@@ -502,7 +502,7 @@ jobs:
   TEST_EXPECTATIONS_PROD:
     needs: [PARSE_MANIFEST, REFRESH_DYNAMIC_TABLES_PROD]
     runs-on: ubuntu-latest
-    environment: DCM_PROD_US
+    environment: DCM_STAGE
     env:
       SNOWFLAKE_ACCOUNT: ${{ needs.PARSE_MANIFEST.outputs.prod_account }}
       SNOWFLAKE_ROLE: ${{ needs.PARSE_MANIFEST.outputs.prod_role }}
@@ -517,7 +517,7 @@ jobs:
       run: |        
         cd ./$DCM_PROJECT_PATH
         set +e
-        TEST_OUTPUT=$(snow dcm test --target DCM_PROD_US -x 2>&1)
+        TEST_OUTPUT=$(snow dcm test --target DCM_STAGE -x 2>&1)
         EXIT_CODE=$?
         set -e
 

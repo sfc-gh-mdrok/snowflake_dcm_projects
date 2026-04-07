@@ -35,14 +35,14 @@ jobs:
         
         echo "📂 Project path: \`$MANIFEST_PATH\`" >> $GITHUB_STEP_SUMMARY
 
-        echo "stage_account=$(yq eval '.targets.DCM_STAGE.account_identifier' "$MANIFEST_PATH" | sed 's/"//g' | sed "s/'//g")" >> $GITHUB_OUTPUT
-        echo "stage_role=$(yq eval '.targets.DCM_STAGE.project_owner' "$MANIFEST_PATH" | sed 's/"//g' | sed "s/'//g")" >> $GITHUB_OUTPUT
-        echo "stage_project_name=$(yq eval '.targets.DCM_STAGE.project_name' "$MANIFEST_PATH" | sed 's/"//g' | sed "s/'//g")" >> $GITHUB_OUTPUT
-        echo "prod_account=$(yq eval '.targets.DCM_PROD_US.account_identifier' "$MANIFEST_PATH" | sed 's/"//g' | sed "s/'//g")" >> $GITHUB_OUTPUT
-        echo "prod_role=$(yq eval '.targets.DCM_PROD_US.project_owner' "$MANIFEST_PATH" | sed 's/"//g' | sed "s/'//g")" >> $GITHUB_OUTPUT
-        echo "prod_project_name=$(yq eval '.targets.DCM_PROD_US.project_name' "$MANIFEST_PATH" | sed 's/"//g' | sed "s/'//g")" >> $GITHUB_OUTPUT
+        echo "stage_account=$(yq eval '.targets.DCM_DEV.account_identifier' "$MANIFEST_PATH" | sed 's/"//g' | sed "s/'//g")" >> $GITHUB_OUTPUT
+        echo "stage_role=$(yq eval '.targets.DCM_DEV.project_owner' "$MANIFEST_PATH" | sed 's/"//g' | sed "s/'//g")" >> $GITHUB_OUTPUT
+        echo "stage_project_name=$(yq eval '.targets.DCM_DEV.project_name' "$MANIFEST_PATH" | sed 's/"//g' | sed "s/'//g")" >> $GITHUB_OUTPUT
+        echo "prod_account=$(yq eval '.targets.DCM_STAGE.account_identifier' "$MANIFEST_PATH" | sed 's/"//g' | sed "s/'//g")" >> $GITHUB_OUTPUT
+        echo "prod_role=$(yq eval '.targets.DCM_STAGE.project_owner' "$MANIFEST_PATH" | sed 's/"//g' | sed "s/'//g")" >> $GITHUB_OUTPUT
+        echo "prod_project_name=$(yq eval '.targets.DCM_STAGE.project_name' "$MANIFEST_PATH" | sed 's/"//g' | sed "s/'//g")" >> $GITHUB_OUTPUT
 
-        for TARGET in DCM_STAGE DCM_PROD_US; do
+        for TARGET in DCM_DEV DCM_STAGE; do
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "**${TARGET}:**" >> $GITHUB_STEP_SUMMARY
           echo "- Snowflake account: \`$(yq eval ".targets.$TARGET.account_identifier" "$MANIFEST_PATH" | sed 's/"//g' | sed "s/'//g")\`" >> $GITHUB_STEP_SUMMARY
@@ -54,7 +54,7 @@ jobs:
   STAGE_PLAN:
     needs: PARSE_MANIFEST
     runs-on: ubuntu-latest
-    environment: DCM_STAGE
+    environment: DCM_DEV
     env:
       SNOWFLAKE_ACCOUNT: ${{ needs.PARSE_MANIFEST.outputs.stage_account }}
       SNOWFLAKE_ROLE: ${{ needs.PARSE_MANIFEST.outputs.stage_role }}
@@ -69,11 +69,11 @@ jobs:
       id: stage_plan
       run: |        
         cd ./$DCM_PROJECT_PATH
-        snow dcm create --target DCM_STAGE --if-not-exists -x
+        snow dcm create --target DCM_DEV --if-not-exists -x
 
         mkdir -p summary
         
-        if snow dcm plan --target DCM_STAGE --save-output -x; then        
+        if snow dcm plan --target DCM_DEV --save-output -x; then        
           echo "### ✅ DCM Plan to STAGE successful" >> $GITHUB_STEP_SUMMARY
           
           PLAN_METADATA_FILE="out/plan/plan_result.json"
@@ -122,7 +122,7 @@ jobs:
   PROD_PLAN:
     needs: PARSE_MANIFEST
     runs-on: ubuntu-latest
-    environment: DCM_PROD_US
+    environment: DCM_STAGE
     env:
       SNOWFLAKE_ACCOUNT: ${{ needs.PARSE_MANIFEST.outputs.prod_account }}
       SNOWFLAKE_ROLE: ${{ needs.PARSE_MANIFEST.outputs.prod_role }}
@@ -137,11 +137,11 @@ jobs:
       id: prod_plan
       run: |        
         cd ./$DCM_PROJECT_PATH
-        snow dcm create --target DCM_PROD_US --if-not-exists -x
+        snow dcm create --target DCM_STAGE --if-not-exists -x
 
         mkdir -p summary
         
-        if snow dcm plan --target DCM_PROD_US --save-output -x; then        
+        if snow dcm plan --target DCM_STAGE --save-output -x; then        
           echo "### ✅ DCM Plan to PROD successful" >> $GITHUB_STEP_SUMMARY
           
           PLAN_METADATA_FILE="out/plan/plan_result.json"
